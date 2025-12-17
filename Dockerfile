@@ -33,8 +33,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY . .
 
 # 7. 포트 노출 (FastAPI 기본 포트)
-EXPOSE 13001
+EXPOSE 8000
 
 # 8. 서버 실행 명령
 # host 0.0.0.0은 외부(K8s Ingress 등)에서 접속하기 위해 필수
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "13001"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
