@@ -18,7 +18,7 @@ async def lifespan(app_: FastAPI):
     
     # K8s Service DNS 또는 localhost
     service_name = os.getenv("SERVICE_NAME", "fast-api-ai")
-    namespace = os.getenv("POD_NAMESPACE", "default")
+    namespace = os.getenv("POD_NAMESPACE", "sj-lab")
     
     # K8s에서는 Service DNS, 로컬에서는 localhost
     if os.getenv("POD_NAMESPACE"):
