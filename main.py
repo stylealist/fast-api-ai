@@ -16,24 +16,30 @@ logger = logging.getLogger(__name__)
 async def lifespan(app_: FastAPI):
     # Startup
     
-    # 1. 환경변수에서 값을 가져오고, 없으면(로컬이면) 기본값을 사용
-    # K8s에서는 "POD_IP"를, 로컬에서는 "localhost"를 사용
-    host_ip = os.getenv("POD_IP", "localhost");
+    # K8s Service DNS 또는 localhost
+    service_name = os.getenv("SERVICE_NAME", "fast-api-ai")
+    namespace = os.getenv("POD_NAMESPACE", "default")
     
-    # K8s에서는 실제 Eureka 주소를, 로컬에서는 로컬 Eureka 주소를 사용
-    eureka_url = os.getenv("EUREKA_SERVER", "http://localhost:8761/eureka")
-    #eureka_url = os.getenv("EUREKA_SERVER", "https://eureka.sj-lab.co.kr/eureka")
-    
-    port = 8000
+    # K8s에서는 Service DNS, 로컬에서는 localhost
+    if os.getenv("POD_NAMESPACE"):
+        # K8s 환경
+        host = f"{service_name}.{namespace}.svc.cluster.local"
+        port = int(os.getenv("SERVICE_PORT", "80"))
+        eureka_url = os.getenv("EUREKA_SERVER", "https://eureka.sj-lab.co.kr/eureka")
+    else:
+        # 로컬 환경
+        host = "localhost"
+        port = 8000
+        eureka_url = "http://localhost:8761/eureka"
 
-    logger.info(f"Initializing Eureka client with host: {host_ip}, port: {port}, server: {eureka_url}")
+    logger.info(f"Initializing Eureka client with host: {host}, port: {port}, server: {eureka_url}")
     
     await eureka_client.init_async(
-        eureka_server=eureka_url,  # 변수로 교체
+        eureka_server=eureka_url,
         app_name="fast-api-ai",
         instance_port=port,
-        instance_host=host_ip,     # 변수로 교체
-        instance_ip=host_ip
+        instance_host=host,
+        instance_ip=host  # 도메인으로 등록
     )
     logger.info("Eureka client initialized")
     yield
