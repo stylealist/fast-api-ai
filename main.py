@@ -41,7 +41,7 @@ async def lifespan(app_: FastAPI):
     await eureka_client.stop_async()
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, root_path="/fast-api-ai")
 
 @app.get("/")
 def read_root():
