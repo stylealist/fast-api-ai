@@ -21,8 +21,8 @@ async def lifespan(app_: FastAPI):
     host_ip = os.getenv("POD_IP", "localhost");
     
     # K8s에서는 실제 Eureka 주소를, 로컬에서는 로컬 Eureka 주소를 사용
-    eureka_url = os.getenv("EUREKA_SERVER", "http://localhost:8761/eureka")
-    #eureka_url = os.getenv("EUREKA_SERVER", "https://eureka.sj-lab.co.kr/eureka")
+    #eureka_url = os.getenv("EUREKA_SERVER", "http://localhost:8761/eureka")
+    eureka_url = os.getenv("EUREKA_SERVER", "https://eureka.sj-lab.co.kr/eureka")
     
     port = 8000
 
