@@ -1,0 +1,28 @@
+# --- Web Framework ---
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+python-multipart  # 파일 업로드를 위해 필요
+requests          # 외부 API 호출용 (RAG 구현 시 필요)
+
+# --- AI & Deep Learning (PyTorch) ---
+# 주의: Docker(Linux) 환경에서는 CPU/CUDA 버전을 명시하는 것이 좋습니다.
+# 아래는 일반적인 의존성입니다.
+#torch>=2.1.0
+#torchvision       # CNN 이미지 처리에 필수
+#torchaudio        # 필요 시 사용
+
+# --- sLLM & RAG ---
+#transformers      # Hugging Face 모델 로드용
+#openai            # ChatGPT API 연동용 (RAG)
+#tiktoken          # 토크나이저
+#accelerate        # 대규모 모델 추론 최적화
+
+# --- Data Processing ---
+#numpy>=1.26.0     # Python 3.12 호환 버전
+#pandas>=2.1.0
+#scikit-learn      # 데이터 전처리 및 기본 ML 알고리즘
+
+# --- Utilities ---
+#python-dotenv     # 환경변수(.env) 관리
+#httpx             # 비동기 HTTP 클라이언트 (FastAPI와 궁합 좋음)
