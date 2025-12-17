@@ -1,3 +1,4 @@
+#
 # 1. 베이스 이미지: Python 3.12.7 slim 버전 (가볍고 보안에 좋음)
 FROM python:3.12.7-slim
 
