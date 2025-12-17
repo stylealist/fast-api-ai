@@ -5,6 +5,11 @@ pydantic>=2.5.0
 python-multipart  # 파일 업로드를 위해 필요
 requests          # 외부 API 호출용 (RAG 구현 시 필요)
 
+# eureka
+py-eureka-client>=0.13.0
+pydantic-settings
+PyYAML  # ★ 추가
+
 # --- AI & Deep Learning (PyTorch) ---
 # 주의: Docker(Linux) 환경에서는 CPU/CUDA 버전을 명시하는 것이 좋습니다.
 # 아래는 일반적인 의존성입니다.
