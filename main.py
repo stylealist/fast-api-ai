@@ -4,7 +4,7 @@ import uvicorn
 from fastapi import FastAPI
 from core.eureka import eureka  # 분리한 eureka 가져오기
 from core.config import settings    # 분리한 설정 가져오기
-from routes.connect_test import router as test_router
+from routes.test.connect_test import router as test_router
 
 # FastAPI 앱 생성 (lifespan 주입)
 app = FastAPI(lifespan=eureka, root_path="/fast-api-ai")
