@@ -4,21 +4,13 @@ import uvicorn
 from fastapi import FastAPI
 from core.eureka import eureka  # 분리한 eureka 가져오기
 from core.config import settings    # 분리한 설정 가져오기
+from routes.connect_test import router as test_router
 
 # FastAPI 앱 생성 (lifespan 주입)
 app = FastAPI(lifespan=eureka, root_path="/fast-api-ai")
 
-@app.get("/")
-def read_root():
-    return {
-        "message": "FastAPI running on Kubernetes!",
-        "python_version": sys.version,
-        "instance_ip": settings.INSTANCE_IP  # 설정값 확인용
-    }
-
-@app.get("/health")
-def health_check():
-    return {"status": "ok"}
+# [핵심] 여기서 라우터를 앱에 등록합니다!
+app.include_router(test_router, tags=["Connect Test"])
 
 if __name__ == "__main__":
     # 포트 정보도 settings에서 가져옴
