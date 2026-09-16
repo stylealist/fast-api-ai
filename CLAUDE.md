@@ -29,3 +29,7 @@ FastAPI 기반 백엔드 서비스(`fast-api-ai`)로, Spring Cloud 기반 MSA(Eu
 - `Dockerfile`은 `python:3.12.7-slim` 기반이며 OpenCV 등 CNN 이미지 처리에 필요한 `libgl1-mesa-glx`, 빌드 도구용 `build-essential`, 헬스체크용 `curl`을 설치함 — 이미지 처리 관련 의존성을 추가로 쓸 경우 이 목록도 함께 검토할 것
 - 커밋 메시지는 `[fix]`, `[feat]`, `[test]`, `[refactor]` 형태의 접두사 컨벤션을 사용함
 - 코드 내 주석은 한글로 작성되어 있고 설정값의 의도(예: `INSTANCE_IP` 고정 이유)를 설명하는 용도로 쓰이는 경우가 많음 — 이런 맥락 주석은 삭제하지 말고 유지할 것
+
+## 통합 허브
+
+저장소를 넘나드는 작업(DB → 백엔드 → 디스커버리 → 게이트웨이 → 프론트엔드)의 총괄 기준 저장소는 `C:\developer\workspace\mapservice-rest`입니다. 시스템 전체 구조·API 계약은 그 저장소의 `docs/system-architecture.md`, 로컬 포트·기동 순서·CORS는 `docs/dev-environment.md`에 있고, MCP(GitHub/DB)와 로컬 비밀값도 그 저장소에서만 관리합니다.
