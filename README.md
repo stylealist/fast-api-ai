@@ -1,92 +1,105 @@
-# fast-api-ai — MSA에 합류한 Python 서비스
+# fast-api-ai — MSA 생태계 연동 Python AI/RAG 마이크로서비스
 
-> Java 기반 Spring Cloud MSA에 **Python(FastAPI) 서비스를 이질감 없이 끼워 넣은** 마이크로서비스입니다.
-> 같은 Eureka에 등록되고 같은 게이트웨이 경로 규칙을 따릅니다. **현재는 디스커버리·라우팅 골격까지 구현된 초기 단계**이고, AI/RAG 기능이 들어갈 자리입니다.
-
-| | |
-|---|---|
-| **게이트웨이 경로** | `/fast-api-ai/**` |
-| **로컬** | `http://localhost:8000` (문서 `/docs`) |
-| **스택** | Python 3.12 · FastAPI · Uvicorn · pydantic-settings · py-eureka-client |
+`fast-api-ai`는 Spring Cloud 기반 마이크로서비스 아키텍처(MSA) 생태계에 Python 환경을 연동하기 위해 구축된 FastAPI 마이크로서비스입니다. Netflix Eureka를 통한 동적 서비스 등록 및 Spring Cloud Gateway 라우팅 규격을 준수하며, 향후 시설물 점검 데이터에 대한 AI 요약, 분류 및 RAG(검색 증강 생성) 기능을 담당할 백엔드 서비스입니다.
 
 ---
 
-## 1. 위치
+## 1. 서비스 역할 및 핵심 책임
+
+- **Polyglot MSA 연동**: Java/Spring 중심의 MSA 인프라(Spring Cloud Gateway, Netflix Eureka)와 완벽히 호환되는 Python 백엔드 인터페이스 제공.
+- **동적 수명 주기 관리(Lifespan Management)**: FastAPI의 비동기 수명 주기(`lifespan`)를 활용하여 서비스 기동 시 Eureka 레지스트리에 인스턴스를 자동 등록하고, 종료 시 정상 해제(Unregister)하여 좀비 인스턴스 발생을 방지.
+- **AI/ML 파이프라인 기반 인프라**: 시설물 현장 음성 메모 STT 요약, 이상 상태 텍스트 분류, 임베딩 기반 유사 사례 검색 등 향후 AI 워크로드를 처리할 수 있는 모듈화된 아키텍처 제공.
+
+---
+
+## 2. 기술 스택
+
+- **언어 및 런타임**: Python 3.12, Uvicorn (ASGI Server)
+- **웹 프레임워크**: FastAPI
+- **설정 및 유효성 검증**: Pydantic Settings
+- **서비스 디스커버리**: `py-eureka-client`
+- **배포 환경**: Docker, Kubernetes (ClusterIP 80 -> 8000), Helm, Jenkins CI, ArgoCD (GitOps)
+
+---
+
+## 3. 시스템 아키텍처 및 라우팅 구조
 
 ```
-[게이트웨이] sj-lab-apigateway :8100 ──/fast-api-ai/**──▶ [이 서비스] :8000
-                    │                                          │
-                    └────────── [Eureka] :8761 ◀──등록─────────┘
+[클라이언트 브라우저]
+       │
+       ▼ (/fast-api-ai/**)
+[sj-lab-apigateway] (:8100) ──서비스 조회──> [Eureka Server] (:8761)
+       │ (lb://FAST-API-AI)                       ▲
+       ▼                                         │ py-eureka-client
+[fast-api-ai] (:8000) ───────────────────────────┘
+  ├── core/eureka.py  (비동기 등록/해제)
+  ├── core/config.py  (환경변수 및 설정)
+  └── routes/         (도메인별 API 엔드포인트)
 ```
 
-Spring 서비스들과 같은 레지스트리에 `FAST-API-AI`로 등록됩니다.
+### 경로 처리 규칙 (Path Transparency)
+- Spring Cloud Gateway의 기본 정책인 "경로 유지(Preserve Path)"를 지원하기 위해 `FastAPI(root_path="/fast-api-ai")`를 적용합니다.
+- 게이트웨이 경유 시 Swagger 문서(`/fast-api-ai/docs`)와 OpenAPI 스키마가 올바른 URL 프리픽스를 인식합니다.
 
 ---
 
-## 2. 면접에서 봐주셨으면 하는 부분
+## 4. 핵심 엔지니어링 구현 상세
 
-### ① 이기종 언어 서비스를 같은 규약으로
+### 4.1 비동기 수명 주기(Lifespan) 기반 Eureka 등록 및 해제
+Spring Cloud Eureka와의 일관된 인스턴스 라이프사이클을 보장하기 위해 `@asynccontextmanager` 수명 주기를 구현했습니다.
 
-Spring Cloud 생태계에 Python 서비스를 넣을 때 필요한 두 가지를 맞췄습니다.
+```python
+# core/eureka.py
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if settings.EUREKA_SERVER:
+        await eureka_client.init_async(
+            eureka_server=settings.EUREKA_SERVER,
+            app_name=settings.APP_NAME,
+            instance_port=settings.PORT,
+            instance_host=settings.INSTANCE_IP,
+        )
+    yield
+    if settings.EUREKA_SERVER:
+        await eureka_client.stop_async()
+```
 
-- **서비스 등록**: `py-eureka-client`를 FastAPI `lifespan`에 물려, 앱 시작 시 `init_async()` / 종료 시 `stop_async()`가 확실히 호출되도록 했습니다(프로세스가 죽을 때 레지스트리에 유령 인스턴스가 남지 않게).
-- **경로 규약**: `root_path="/fast-api-ai"`로 설정해 게이트웨이가 경로를 벗기지 않고 그대로 전달하는 이 시스템의 규칙과 일치시켰습니다. Swagger 문서 경로도 자동으로 맞습니다.
+### 4.2 컨테이너 및 로컬 환경 IP 바인딩 전략
+- 네트워크 인터페이스 자동 감지 시 발생할 수 있는 가상 NIC 바인딩 오류를 방지하기 위해, Kubernetes Pod 환경에서는 `POD_IP` 환경변수를 우선 참조하고 로컬 환경에서는 `127.0.0.1`로 명시적 고정 바인딩을 수행합니다.
 
-### ② 등록 IP를 고정한 이유
-
-`INSTANCE_IP`는 `POD_IP` 환경변수를 우선 쓰고, 없으면 **`127.0.0.1`로 고정**합니다. 예전에 `socket` 기반 자동탐지를 썼다가 로컬에서 엉뚱한 NIC 주소가 Eureka에 등록돼 게이트웨이가 접속하지 못하는 문제가 있었습니다. 자동탐지를 되살리지 말라는 경고를 코드 주석과 문서에 남겨 두었습니다.
-
-### ③ 확장을 염두에 둔 골격
-
-`routes/<도메인>/` + `APIRouter` 구조, `service/`·`db/` 자리 확보, AI/RAG 의존성(PyTorch·transformers·OpenAI SDK 등)을 `requirements.txt`에 **주석으로 미리 정리**해 두었습니다. 이미지 처리까지 고려해 Dockerfile에 `libgl1-mesa-glx`·`build-essential`·헬스체크용 `curl`을 포함했습니다.
+### 4.3 확장 가능한 프로젝트 디렉터리 레이아웃
+```
+fast-api-ai/
+├── core/            # 설정(Config) 및 Eureka 연동 모듈
+├── routes/          # 도메인별 APIRouter 정의
+├── service/         # 비즈니스 로직 및 AI 모델 추론 계층
+├── db/              # 데이터베이스 커넥션 및 모델
+├── main.py          # 애플리케이션 엔트리포인트
+└── requirements.txt # 런타임 및 AI 의존성 명세
+```
 
 ---
 
-## 3. 실행
+## 5. 실행 및 개발 환경
 
+### 로컬 실행
 ```bash
+# 의존성 설치
 pip install -r requirements.txt
-python main.py                                        # settings.PORT(기본 8000)
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload  # 리로드가 필요할 때
+
+# 단독 실행 (기본 포트 8000)
+python main.py
+
+# 핫 리로드 실행
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
+### Docker 빌드 및 실행
 ```bash
 docker build -t fast-api-ai .
-docker run -p 8000:8000 fast-api-ai
+docker run -p 8000:8000 -e EUREKA_SERVER=http://host.docker.internal:8761/eureka fast-api-ai
 ```
 
----
-
-## 4. 구조
-
-| 경로 | 역할 |
-|---|---|
-| `main.py` | 엔트리포인트. `root_path`, Eureka `lifespan`, **라우터 등록(`include_router`)** |
-| `core/config.py` | `pydantic-settings` 전역 설정 — `APP_NAME`, `PORT`, `EUREKA_SERVER`, `INSTANCE_IP` |
-| `core/eureka.py` | Eureka 등록/해제(`@asynccontextmanager`) |
-| `routes/` | 도메인별 `APIRouter` (예: `routes/test/connect_test.py`) |
-| `service/`, `db/` | 비즈니스 로직·DB 접근용으로 비워 둔 자리 |
-
-**라우트 추가**: `routes/<도메인>/`에 `APIRouter`를 만들고 → `main.py`에서 `include_router()` → 외부 경로는 `/fast-api-ai/<prefix>/...`. 등록을 빠뜨리면 노출되지 않습니다.
-
----
-
-## 5. 배포
-
-```
-git push → Jenkins(빌드 → 이미지 push) → sj-lab-k8s-manifests 의 image.tag 자동 커밋
-        → ArgoCD 동기화 → Kubernetes 롤아웃 (ClusterIP 80 → 8000)
-```
-
----
-
-## 6. 현재 상태와 다음 계획
-
-- **골격 단계입니다.** 실제 AI 기능은 아직 없습니다.
-- 계획 중인 첫 기능: 현장 음성 메모의 STT 결과(이미 DB에 적재됨)를 요약하고 **보수 우선순위를 제안**하는 엔드포인트. 시설물 데이터와 바로 연결되는 주제라 MSA·GIS·AI가 한 줄기로 이어집니다.
-- 테스트·린터가 없어 도입이 필요합니다(pytest, ruff).
-
-## 참고
-
-- 전체 구조: 총괄 저장소 `mapservice-rest`의 `docs/system-architecture.md`
-- 작업 규칙: 이 저장소의 `CLAUDE.md`
+### API 문서 확인
+- 로컬 단독: `http://localhost:8000/docs`
+- 게이트웨이 경유: `http://localhost:8100/fast-api-ai/docs`
