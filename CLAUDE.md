@@ -25,6 +25,9 @@ FastAPI 기반 백엔드 서비스(`fast-api-ai`)로, Spring Cloud 기반 MSA(Eu
 
 ## 참고
 
+- **부동산 실거래 조회는 이 저장소에 두지 않는다**(2026-10-12). 한동안 `routes/estate/` 로 서비스했지만,
+  이 서비스는 AI 기능만 담기로 하고 `sj-lab-estate`(Spring Boot, 게이트웨이 `/estate/**`)로 옮겼다.
+  옛 코드는 `sj-lab/trash/2026-10-12/fast-api-ai/` 에 있고, `requirements.txt` 의 psycopg 도 주석 처리했다.
 - `requirements.txt`에는 향후 AI/RAG 기능(PyTorch, transformers, OpenAI SDK, tiktoken, numpy/pandas 등)을 위한 의존성이 주석 처리된 채로 미리 정리되어 있음. 실제로 해당 기능을 구현할 때 필요한 항목만 주석 해제할 것
 - `Dockerfile`은 `python:3.12.7-slim` 기반이며 OpenCV 등 CNN 이미지 처리에 필요한 `libgl1-mesa-glx`, 빌드 도구용 `build-essential`, 헬스체크용 `curl`을 설치함 — 이미지 처리 관련 의존성을 추가로 쓸 경우 이 목록도 함께 검토할 것
 - 커밋 메시지는 `[fix]`, `[feat]`, `[test]`, `[refactor]` 형태의 접두사 컨벤션을 사용함

@@ -12,21 +12,6 @@ class Settings(BaseSettings):
 
     INSTANCE_IP: str | None = os.getenv("POD_IP")
 
-    # 부동산 실거래 조회용 DB 접속 문자열(estate 스키마).
-    # 예: postgresql://계정:비밀번호@호스트:5432/sjlab
-    #
-    # 값을 코드·저장소에 적지 말 것(이 저장소는 public). 환경변수로만 주입한다.
-    #   로컬  : sj-lab/.claude/settings.local.json 의 env (git 제외 파일)
-    #   운영  : k8s Secret
-    #
-    # 비어 있으면 부동산 API 만 503 을 돌려주고 나머지 라우터는 그대로 동작한다.
-    # (sj-lab-openapi 의 키 기능과 같은 방식 — 설정이 없어도 서비스는 떠야 한다)
-    ESTATE_DB_DSN: str = ""
-
-    # 조회 전용이라 커넥션을 많이 쓸 필요가 없다.
-    ESTATE_DB_POOL_MIN: int = 1
-    ESTATE_DB_POOL_MAX: int = 5
-
     def model_post_init(self, __context):
         if not self.INSTANCE_IP:
             self.INSTANCE_IP = self._get_host_ip()
