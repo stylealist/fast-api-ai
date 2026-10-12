@@ -10,6 +10,11 @@ py-eureka-client>=0.13.0
 pydantic-settings
 PyYAML  # ★ 추가
 
+# --- DB (부동산 실거래 조회) ---
+# estate 스키마를 읽기 전용으로 조회한다. 접속 문자열은 ESTATE_DB_DSN 환경변수로만 주입.
+psycopg[binary]>=3.1.0
+psycopg_pool>=3.2.0
+
 # --- AI & Deep Learning (PyTorch) ---
 # 주의: Docker(Linux) 환경에서는 CPU/CUDA 버전을 명시하는 것이 좋습니다.
 # 아래는 일반적인 의존성입니다.
