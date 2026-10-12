@@ -13,22 +13,80 @@ LIST_LIMIT_DEFAULT = 100
 LIST_LIMIT_MAX = 1000
 
 
+def _period_bounds(table: str) -> tuple[int | None, int | None]:
+    """그 표의 가장 이른·늦은 거래 월(yyyyMM).
+
+    `min(deal_year * 100 + deal_month)` 처럼 식으로 쓰면 인덱스를 못 타 전건을 훑는다.
+    컬럼 순서대로 정렬해 한 행만 꺼내면 ix_*_period 인덱스를 그대로 쓴다.
+    """
+    first = estate_db.fetch_one(
+        f"select deal_year, deal_month from {table} "
+        "where deal_year is not null order by deal_year, deal_month limit 1"
+    )
+    last = estate_db.fetch_one(
+        f"select deal_year, deal_month from {table} "
+        "where deal_year is not null order by deal_year desc, deal_month desc limit 1"
+    )
+    to_ym = lambda row: (row["deal_year"] * 100 + row["deal_month"]) if row else None
+    return to_ym(first), to_ym(last)
+
+
+def _last_load(table: str, latest_ym: int | None):
+    """마지막으로 적재된 시각.
+
+    `created_at` 에는 인덱스가 없어 `max(created_at)` 을 그냥 부르면 전건을 훑는다
+    (실측 23.4초, Parallel Seq Scan). 가장 최근 거래 월로 범위를 좁히면
+    ix_*_period 인덱스로 그 달만 읽어 금방 끝난다. 수집은 최근 달을 다시 받는 구조라
+    마지막 적재 시각은 늘 최근 달 안에 있다.
+    """
+    if not latest_ym:
+        return None
+    row = estate_db.fetch_one(
+        f"select max(created_at) as last_load from {table} "
+        "where deal_year = %s and deal_month = %s",
+        (latest_ym // 100, latest_ym % 100),
+    )
+    return row["last_load"] if row else None
+
+
 def get_meta() -> dict:
-    """데이터가 어디부터 어디까지 있는지. 화면 상단 요약과 기간 선택의 기본값으로 쓴다."""
+    """데이터가 어디부터 어디까지 있는지. 화면 상단 요약과 기간 선택의 기본값으로 쓴다.
+
+    **건수는 `count(*)` 가 아니라 통계(`reltuples`) 추정치다.** 두 표가 2,100만 행이라
+    정확히 세면 한 번에 **32초**가 걸려(실측) 화면이 열릴 때마다 그만큼 기다려야 했다.
+    요약 카드에 쓰는 값이라 추정으로 충분하고, 응답에 `rows_estimated: true` 로 밝힌다.
+    정확한 건수가 필요하면 DB에서 직접 세면 된다.
+
+    추정치는 ANALYZE 기준이라 적재 직후 잠시 어긋날 수 있다. 수집은 하루 한 번이라
+    실제로는 거의 차이가 없고, 그래도 `trade_last_load` 로 언제 기준인지 알 수 있다.
+    """
     row = estate_db.fetch_one(
         """
         select
-            (select count(*) from estate.apt_trade)                                as trade_rows,
-            (select count(*) from estate.apt_rent)                                 as rent_rows,
-            (select min(deal_year * 100 + deal_month) from estate.apt_trade)       as trade_from_ym,
-            (select max(deal_year * 100 + deal_month) from estate.apt_trade)       as trade_to_ym,
-            (select min(deal_year * 100 + deal_month) from estate.apt_rent)        as rent_from_ym,
-            (select max(deal_year * 100 + deal_month) from estate.apt_rent)        as rent_to_ym,
-            (select count(distinct sgg_cd) from estate.apt_trade)                  as trade_sgg_count,
-            (select max(created_at) from estate.apt_trade)                         as trade_last_load
+            greatest(0, (select reltuples::bigint from pg_class
+                          where oid = 'estate.apt_trade'::regclass))  as trade_rows,
+            greatest(0, (select reltuples::bigint from pg_class
+                          where oid = 'estate.apt_rent'::regclass))   as rent_rows
         """
     )
-    return row or {}
+    meta = dict(row or {})
+
+    trade_from, trade_to = _period_bounds("estate.apt_trade")
+    rent_from, rent_to = _period_bounds("estate.apt_rent")
+    meta["trade_last_load"] = _last_load("estate.apt_trade", trade_to)
+    meta.update(
+        {
+            "trade_from_ym": trade_from,
+            "trade_to_ym": trade_to,
+            "rent_from_ym": rent_from,
+            "rent_to_ym": rent_to,
+            # 지역 수는 regions 목록 길이로 알 수 있어 따로 세지 않는다
+            # (count(distinct sgg_cd) 도 전건 훑기라 느리다)
+            "trade_sgg_count": None,
+            "rows_estimated": True,
+        }
+    )
+    return meta
 
 
 def get_regions() -> list[dict]:
@@ -50,18 +108,37 @@ def get_regions() -> list[dict]:
 
 
 def _ym_filter(from_ym: int | None, to_ym: int | None, params: list, prefix: str = "") -> str:
-    """deal_year*100+deal_month 범위 조건을 만든다. 인덱스를 타게 연·월 컬럼으로 비교한다.
+    """거래 월 범위 조건을 만든다.
+
+    **`deal_year * 100 + deal_month` 처럼 식으로 비교하지 말 것.** 식에는 인덱스가 걸리지
+    않아 전건을 훑는다 — 실측으로 지역 순위 조회가 23.5초였다. 연도를 그냥 비교(`between`)해
+    인덱스로 범위를 좁힌 뒤 경계 연도에서만 월을 따진다.
 
     prefix 는 g_sgg 와 조인하는 쿼리에서 테이블 별칭을 붙이기 위한 것이다("t.").
     조인하면 sgg_cd 가 양쪽에 있어 별칭 없이 쓰면 "column reference is ambiguous" 가 난다.
     """
+    y = f"{prefix}deal_year"
+    m = f"{prefix}deal_month"
     clauses = []
+
+    if from_ym is not None and to_ym is not None:
+        clauses.append(f"{y} between %s and %s")
+        params.extend([from_ym // 100, to_ym // 100])
+    elif from_ym is not None:
+        clauses.append(f"{y} >= %s")
+        params.append(from_ym // 100)
+    elif to_ym is not None:
+        clauses.append(f"{y} <= %s")
+        params.append(to_ym // 100)
+
+    # 경계 연도에서만 월을 본다(그 안쪽 연도는 위 조건으로 이미 걸러졌다)
     if from_ym is not None:
-        clauses.append(f"({prefix}deal_year * 100 + {prefix}deal_month) >= %s")
-        params.append(from_ym)
+        clauses.append(f"({y} > %s or {m} >= %s)")
+        params.extend([from_ym // 100, from_ym % 100])
     if to_ym is not None:
-        clauses.append(f"({prefix}deal_year * 100 + {prefix}deal_month) <= %s")
-        params.append(to_ym)
+        clauses.append(f"({y} < %s or {m} <= %s)")
+        params.extend([to_ym // 100, to_ym % 100])
+
     return (" and " + " and ".join(clauses)) if clauses else ""
 
 
